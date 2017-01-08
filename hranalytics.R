@@ -9,7 +9,7 @@ library(ggplot2)
 
 # Load data ---------------------------------------------------------------
 
-hr=read.csv("HR_comma_sep.csv",stringsAsFactors = FALSE)
+hr=read.csv("HR_comma_sep.csv",stringsAsFactors = TRUE)
 str(hr)
 hr$sales=factor(hr$sales)
 hr$salary=factor(hr$salary)
@@ -125,4 +125,141 @@ hr %>%
   
 #data visualization using correlation plots
 
+library(corrplot)
+hr$left=as.numeric(hr$left)
+corrplot(cor(hr[,1:8]),method = "circle")
+
+
+# Prediction using machine learning MLR ---------------------------------------
+
+library(mlr)
+summarizeColumns(hr)
+#first create train and test set
+#train will be 60% of data
+str(hr)
+hr$left=factor(hr$left,labels = c("remain","left"))
+table(hr$left)
+
+
+train_hr=sample(nrow(hr),0.6*nrow(hr),replace = FALSE)
+test_hr=setdiff(1:nrow(hr),train_hr)
+
+train_hr_data=hr[train_hr,]
+test_hr_data=hr[test_hr,]
+
+#first create a classification task for the training and testing data
+
+train_task=makeClassifTask(data = train_hr_data,target = "left",positive = 'left')
+train_task
   
+#similarly for testdata
+test_task=makeClassifTask(data = test_hr_data,target = "left",positive = 'left')
+test_task
+
+#list all learners that can perform classification modeling on the train task
+
+listLearners(train_task)[c("class","package")]
+
+#we'll do the benchmarking using the following models
+#1. GBM, 2. Logistic regression, 3. RPART 4. Random Forest, 5. c5.0 6. SVM
+
+bench.learners=list(makeLearner("classif.rpart",predict.type = "prob"),makeLearner("classif.logreg",predict.type = "prob"),makeLearner("classif.gbm",predict.type = "prob"),
+                    makeLearner("classif.randomForest",predict.type = "prob"),makeLearner("classif.ksvm",predict.type = "prob"),makeLearner("classif.C50",predict.type = "prob"))
+
+#create sampling strategy- CV using 5 iterations
+bench.strategy=makeResampleDesc("CV",iters=5)
+#finalize performance measures
+bench.measures=list(acc,auc,tpr,ppv)
+
+#perform the benchmark experiment to find the best model
+
+bench.expt=benchmark(learners = bench.learners,resamplings = bench.strategy,measures = bench.measures,tasks = train_task)
+
+bench.expt
+names(bench.expt)
+bench.expt$results
+bench.expt$measures
+bench.expt$learners
+
+#visulizing the results
+
+
+#Random Forest, C50, and RPart have given the best results
+
+#visualize performance
+
+getBMRPerformances(bench.expt)
+
+#aggregated performance
+getBMRAggrPerformances(bench.expt)
+
+#for plotting, better to convert this to a database
+
+df=getBMRPerformances(bench.expt,as.df = TRUE)
+plotBMRBoxplots(bench.expt,measure = auc)+aes(color=learner.id)
+
+ggplot(df,aes(acc,auc,fill=learner.id))+geom_point(size=2)+facet_wrap(~learner.id)
+
+
+# Use Random Forest to make predictions -----------------------------------
+
+#selected as the best model
+
+#tune hyperparameters for the best model
+
+#first get all the parameters for random forest
+
+getParamSet("classif.randomForest")
+?randomForest
+
+#we'll tune ntree
+
+rf.search=makeParamSet(
+  makeIntegerParam("ntree",lower=300,upper = 1000))
+
+#find search algorithm- 200 iterations
+
+
+rf.algo=makeTuneControlRandom(maxit = 10)
+
+#define resampling strategy- 10 fold crossvalidation
+
+rf.resam=makeResampleDesc("CV",iters=10)
+
+#define the learner
+
+rf.learner=makeLearner("classif.randomForest",predict.type = "prob",fix.factors.prediction = TRUE)
+
+#finally tune parameters for selection of best hyperparameters
+
+rf.tune=tuneParams(learner = rf.learner,task = train_task,resampling = rf.resam,
+                 measures = list(auc,acc),par.set = rf.search,control = rf.algo )
+
+#in this case, it's taking a lot of time so we use the default parameters
+
+rf.train=train(learner = rf.learner,task = train_task)
+rf.train
+names(rf.train)
+rf.train$time
+#took 14 secs to run the training model
+
+# now predict using the test set
+
+rf.test=predict(rf.train,task = test_task)
+
+names(rf.test)
+rf.test
+calculateConfusionMatrix(rf.test)
+calculateROCMeasures(rf.test)
+
+#calculate the performance of the model
+
+performance(rf.test,measures = list(mmce,acc,auc,tpr,fpr))
+
+#plotting the results
+
+plotdata=generateThreshVsPerfData(rf.test,measures = list(fpr,tpr,mmce,acc,auc))
+plotdata
+
+plotROCCurves(plotdata)
+ggplot(plotdata$data,aes(fpr,tpr,color="orange"))+geom_line()+geom_abline(slope = 1,intercept = 0,linetype="dashed",color="blue")
