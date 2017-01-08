@@ -263,3 +263,57 @@ plotdata
 
 plotROCCurves(plotdata)
 ggplot(plotdata$data,aes(fpr,tpr,color="orange"))+geom_line()+geom_abline(slope = 1,intercept = 0,linetype="dashed",color="blue")
+library(FSelector)
+
+#find the variable contributing the maximum to the model
+
+fv=generateFilterValuesData(task = test_task)
+#this is using the default randomForestSRC package
+#alternatively , the method can be information gain
+
+fv
+fv$data
+#the top features resulting in people leaving are
+#1. satisfaction level, number of projects (how much engaged), average monthly hours,last evaluation
+
+#Salary, sales (Role), promotion , work accidents have the least impact on leaving 
+
+
+
+
+#let's visualize the feature importance using rpart- single tree
+
+rpart.learner=makeLearner("classif.rpart",predict.type = "prob",fix.factors.prediction = TRUE)
+rpart.train=train(learner = rpart.learner,task = train_task)
+
+#let's predict using the trained model
+
+rpart.predict=predict(object = rpart.train,task = test_task)
+
+calculateConfusionMatrix(rpart.predict)
+calculateROCMeasures(rpart.predict)
+
+plotdata=generateThreshVsPerfData(rpart.predict,measures = list(mmce,acc,auc,tpr,fpr))
+performance(rpart.predict,measures = list(mmce,acc,auc,tpr,fpr))
+generateFeatureImportanceData(task = test_task,learner = rpart.learner)
+
+#using the tree directly w/o using the mlr package
+library(rpart)
+rpart.tree=rpart(left~., data=train_hr_data)
+
+res=predict(rpart.tree,newdata = test_hr_data)
+
+library(rpart.plot)
+
+#let's visualize the plot
+rpart.plot(rpart.tree,type=2,fallen.leaves = FALSE,cex=0.75,extra=2)
+
+#let's try and find model importance using randomforest directly
+library(randomForest)
+model.rf=randomForest(as.factor(left)~.,data=train_hr_data)
+importance(model.rf)
+
+predict.rf=predict(model.rf,newdata = test_hr_data)
+
+library(caret)
+confusionMatrix(predict.rf,test_hr_data$left)
