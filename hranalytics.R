@@ -428,3 +428,5 @@ performance(svm.regr.predict,measures = list(mse,sse,rmse))
 #plotting 
 
 ggplot(svm.regr.predict$data,aes(truth,response))+geom_point()+geom_smooth(method="loess",se = TRUE)
+
+
