@@ -317,3 +317,5 @@ predict.rf=predict(model.rf,newdata = test_hr_data)
 
 library(caret)
 confusionMatrix(predict.rf,test_hr_data$left)
+
+#detached caret package
