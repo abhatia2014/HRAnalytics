@@ -319,3 +319,98 @@ library(caret)
 confusionMatrix(predict.rf,test_hr_data$left)
 
 #detached caret package
+
+library(mlr)
+
+
+# Regression analysis on Satisfaction level -------------------------------
+
+head(train_hr_data)
+names(train_hr_data)
+#removing left column
+train_sat_data=train_hr_data[,-7]
+head(train_sat_data)
+
+#similarly for test data set
+
+test_sat_data=test_hr_data[,-7]
+
+#creating regression tasks for test and training
+train_task_sat=makeRegrTask(data = train_sat_data,target = "satisfaction_level")
+test_task_sat=makeRegrTask(data = test_sat_data,target = "satisfaction_level")
+
+train_task_sat
+
+#perform a benchmark experiment to find the best model for regression
+#first find all models for regression for the training tasks
+
+reg.learners=listLearners(train_task_sat)[c("class","package")]
+
+#make a list of learners for the benchmarking experiment
+
+bench.regr.learners=list(makeLearner("regr.gbm"),makeLearner("regr.glm"),makeLearner("regr.glmnet"),
+                         makeLearner("regr.rpart"),makeLearner("regr.lm"),makeLearner("regr.randomForest"),makeLearner("regr.svm"))
+
+# decide on the resampling strategy
+
+bench.regr.resamp=makeResampleDesc("CV",iters=5)
+
+listMeasures(train_task_sat)
+bench.regr.measure=list(mse,rmse,medse,mae,timetrain,sse)
+
+#perform the benchmark experiment
+
+bench.regr.expt=benchmark(learners = bench.regr.learners,tasks = train_task_sat,resamplings = bench.regr.resamp,
+                          measures = bench.regr.measure)
+
+bench.regr.expt
+bench.regr.expt$measures
+#the best models for analysis are random forest, rpart, and SVM
+
+#let's visualize the results
+
+plotregrdata=getBMRPerformances(bench.regr.expt,as.df = TRUE)
+
+plotBMRBoxplots(bench.regr.expt)+aes(color=learner.id)+ggtitle("Regression Model Performance")
+
+#predicting using random forest first
+#1. make learner
+final.regr.learn1=makeLearner("regr.randomForest")
+#2. train model
+rf.regr.train=train(learner = final.regr.learn1,task = train_task_sat)
+
+#3. predict using model
+rf.regr.predict=predict(rf.regr.train,task = test_task_sat)
+performance(rf.regr.predict,measures = list(mse,sse,rmse))
+rf.regr.predict
+head(rf.regr.predict$data,50)
+ggplot(rf.regr.predict$data,aes(truth,response))+geom_point()+geom_smooth(method = "lm")
+
+#finding variable importance
+gen.fv=generateFilterValuesData(train_task_sat)
+gen.fv$data
+#plot filter values
+plotFilterValues(gen.fv)
+plotFilterValuesGGVIS(gen.fv)
+
+#retrain and find variable importance plot using regular random forest method
+rf.regr=randomForest(satisfaction_level~.,data=train_sat_data)
+rf.predict=predict(rf.regr,newdata = test_sat_data)
+plot(test_sat_data$satisfaction_level,rf.predict)
+varImpPlot(x = rf.regr)
+
+#let's train and predict using rpart now
+
+rpart.regr.train=train(learner = "regr.rpart",task = train_task_sat)
+
+#predict
+rpart.regr.predict=predict(object = rpart.regr.train,task = test_task_sat)
+performance(rpart.regr.predict,measures = list(mse,sse,rmse) )
+ggplot(rpart.regr.predict$data,aes(truth,response))+geom_point()+geom_smooth(method = "lm")
+
+#visualizing rpart.plot feature importance
+
+#first a retraining is needed
+rpart.regr=rpart(satisfaction_level~.,data=train_sat_data)
+
+rpart.plot(x = rpart.regr,type = 2,fallen.leaves = FALSE,cex=0.75)
