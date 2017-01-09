@@ -1,0 +1,130 @@
+---
+title: "Mushroom classification"
+
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+First get the data 
+
+```{r}
+mushroom=read.csv("mushrooms.csv")
+str(mushroom)
+table(mushroom$class)
+```
+
+Load required libraries
+
+```{r}
+library(mlr)
+library(dplyr)
+library(ggplot2)
+library(formattable)
+```
+
+Remove features that have limited variance using the function removeConstantFeatures
+
+```{r}
+mushroom=removeConstantFeatures(mushroom)
+```
+
+Removed one feature veil.type from the feature set
+
+Now, splitting the data into training and test set - 60%-40%
+
+```{r}
+sampleID=sample(nrow(mushroom),0.6*nrow(mushroom),replace = FALSE)
+train.sample=mushroom[sampleID,]
+test.sample=mushroom[setdiff(1:nrow(mushroom),sampleID),]
+```
+
+Create a benchmark experiment to find the best model for classification, first create a training task
+
+```{r}
+mushroom.trn.task=makeClassifTask(data = train.sample,target = "class")
+mushroom.trn.task
+```
+
+Now identify all learners that can perform classification for this task
+
+```{r}
+alllearn=listLearners(mushroom.trn.task)[c("class","package")]
+formattable(alllearn,align="l")
+```
+
+Select the learners for benchmarking
+
+```{r}
+bench.learners=list(makeLearner("classif.rpart",predict.type = "prob"),makeLearner("classif.randomForest",predict.type = "prob"),makeLearner("classif.gbm",predict.type = "prob"),
+                    makeLearner("classif.ada",predict.type = "prob"),
+                  
+                    makeLearner("classif.boosting",predict.type = "prob"),
+                    makeLearner("classif.ksvm",predict.type = "prob"))
+bench.learners
+```
+
+Now, select the benchmarking resampling strategy
+
+```{r}
+bench.resamp=makeResampleDesc(method = "CV",iters=7,stratify = TRUE)
+bench.resamp
+```
+
+Finally, decide on the performance (evaluation) measures
+
+```{r}
+listMeasures(mushroom.trn.task)
+bench.measures=list(kappa,acc,auc,tpr,fpr)
+```
+
+Now, let's perform the benchmarking experiment
+
+```{r, message=FALSE, warning=FALSE}
+bench.expt=benchmark(learners = bench.learners,resamplings = bench.resamp,tasks = mushroom.trn.task,measures = bench.measures)
+bench.expt
+```
+
+As it is evident, random Forest, ada, boosting and ksvm give perfect accuracy and auc
+
+Let us now visualize the results
+
+```{r}
+plotdata=getBMRPerformances(bench.expt,as.df = TRUE)
+plotBMRSummary(bench.expt)
+plotBMRBoxplots(bench.expt)+aes(color=learner.id)
+ggplot(plotdata,aes(acc,auc,color=learner.id))+geom_point(aes(size=2))+facet_wrap(~learner.id)+theme(legend.position = "none")
+```
+
+Now, let us perform model training using ksvm learner which has perfect accuracy
+
+```{r}
+model.learner=makeLearner("classif.ksvm",predict.type = "prob")
+model.train=mlr::train(learner = model.learner,task = mushroom.trn.task)
+model.predict=predict(model.train,newdata = test.sample)
+model.predict
+```
+
+Let's see the performance of the model using caret package
+
+```{r}
+library(caret)
+confusionMatrix(model.predict$data$truth,model.predict$data$response)
+```
+
+That's a perfect model with 100% correct prediction. Now let's try and find the variable importance
+
+```{r}
+varimp=generateFilterValuesData(task = mushroom.trn.task)
+varimp
+```
+
+Plot Variable Importance
+
+```{r}
+plotFilterValues(fvalues = varimp)+ggtitle("Variable Importance for Feature Selection:Mushroom Classification")+
+  aes(fill=name)+theme(legend.position = "none")
+```
+
+
+
