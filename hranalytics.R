@@ -356,7 +356,7 @@ bench.regr.learners=list(makeLearner("regr.gbm"),makeLearner("regr.glm"),makeLea
 bench.regr.resamp=makeResampleDesc("CV",iters=5)
 
 listMeasures(train_task_sat)
-bench.regr.measure=list(mse,rmse,medse,mae,timetrain,sse)
+bench.regr.measure=list(rsq,rae,rmse,medse,mae,timetrain,sse)
 
 #perform the benchmark experiment
 
