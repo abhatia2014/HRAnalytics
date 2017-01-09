@@ -414,3 +414,17 @@ ggplot(rpart.regr.predict$data,aes(truth,response))+geom_point()+geom_smooth(met
 rpart.regr=rpart(satisfaction_level~.,data=train_sat_data)
 
 rpart.plot(x = rpart.regr,type = 2,fallen.leaves = FALSE,cex=0.75)
+
+#one final model building using SVM
+
+svm.learner=makeLearner("regr.svm")
+#train model
+svm.regr.train=train(learner = svm.learner,task = train_task_sat)
+
+#predict model
+svm.regr.predict=predict(svm.regr.train,task = test_task_sat)
+svm.regr.predict
+performance(svm.regr.predict,measures = list(mse,sse,rmse))
+#plotting 
+
+ggplot(svm.regr.predict$data,aes(truth,response))+geom_point()+geom_smooth(method="loess",se = TRUE)
