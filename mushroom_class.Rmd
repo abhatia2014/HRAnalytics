@@ -1,9 +1,10 @@
 ---
 title: "Mushroom classification"
+author: "Aankur Bhatia"
+date: "`r format(Sys.Date())`"
+output:github_document
+  
 
-output:
-  html_notebook: default
-  pdf_document: default
 ---
 
 First get the data 
@@ -49,7 +50,7 @@ mushroom.trn.task
 Now identify all learners that can perform classification for this task
 
 ```{r}
-alllearn=listLearners(mushroom.trn.task)[c("class","package")]
+alllearn=listLearners(mushroom.trn.task,warn.missing.packages = FALSE)[c("class","package")]
 formattable(alllearn,align="l")
 ```
 
