@@ -1,0 +1,99 @@
+---
+title: "Aviation Analytics"
+author: "Aankur Bhatia"
+date: '`r Sys.Date() `'
+output: html_notebook
+---
+
+First task is to load and tidy up the data, before that we load the libraries
+
+```{r}
+#global options set
+options(digits = 2, scipen = 5)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(ggthemes)
+library(gridExtra)
+library(forcats)
+library(extrafont)
+library(extrafontdb)
+library(knitr)
+library(DT)
+library(DMwR)
+library(mlr)
+
+#load the NTSB data set
+aviation=read.csv("AviationDataEnd2016UP.csv",na.strings = "",stringsAsFactors = TRUE)
+str(aviation)
+```
+
+let us now summarize the dataset 
+
+```{r}
+summary(aviation)
+```
+
+convert event date and publication date to date objects
+
+```{r}
+head(aviation)
+aviation$Event.Date=ymd(aviation$Event.Date)
+aviation$Publication.Date=dmy(aviation$Publication.Date)
+```
+
+We would like to focus the analysis on the US as 94% observations are from the US
+
+Remove all other data that is not from the US Country
+
+```{r}
+aviation=aviation %>% 
+  filter(Country=="United States")
+```
+
+Here are the top questions that we would like to ask
+
+1. In the US, has aviation accidents causing fatality improved in the past 70 years?
+
+2. Which phase (ex. take off, cruise, landing..) of the flight contributed to the most fatality? 
+
+3. What was the purpose of the flight that contributed the most fatalities? 
+
+4. Which of the 50 states in the US saw the most fatal accidents? 
+
+```{r eval=TRUE, message=FALSE, echo=FALSE}
+# we do the following function
+#1. check for duplicates
+aviation=distinct(aviation)
+#check for column wise missing data
+#we can use summarize column function of mlr
+summarizeColumns(aviation)
+#alternativelya
+apply(X = aviation, function(x) sum(is.na(x)),MARGIN = 2)
+```
+
+remove rows that have more than 30% NAs
+
+```{r}
+manyna=manyNAs(aviation,nORp = 0.3)
+#1255 rows - we remove them
+aviation=aviation[-manyna,]
+```
+
+separate the data into year, month, day
+
+```{r}
+aviation$year=year(aviation$Event.Date)
+aviation$month=month(aviation$Event.Date,label = TRUE,abbr = TRUE)
+aviation$day=day(aviation$Event.Date)
+```
+
+Drop columns that have more than 30% NAs in the data 
+
+```{r}
+columns=as.data.frame(apply(X = aviation, function(x) sum(is.na(x)),MARGIN = 2))
+columns=columns %>% 
+  mutate(cname=row.names(columns))
+```
+
