@@ -55,4 +55,11 @@ pokemon=pokemon %>%
   filter(hasGender=="True")
 ```
 
+looking at the summary once again
 
+```{r}
+summarizeColumns(pokemon)
+```
+
+
+find the features that can be 

@@ -2,9 +2,9 @@
 title: "Mushroom classification"
 author: "Aankur Bhatia"
 date: '`r format(Sys.Date())`'
-output: github_document
-  
-  
+output:
+  html_notebook: default
+  html_document: default
 ---
 
 First get the data 
