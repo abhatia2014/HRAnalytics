@@ -1,0 +1,58 @@
+---
+title: "Pokemon Machine Learning"
+author: "Aankur Bhatia"
+output: html_notebook
+---
+
+Load the required packages
+
+```{r}
+all_packages=list("dplyr","caret","ggplot2","mlr","DT")
+
+lapply(all_packages,require,character.only=TRUE)
+
+```
+
+load the Pokemon dataset next
+
+```{r}
+pokemon=read.csv("pokemon_alopez247.csv",stringsAsFactors = TRUE)
+```
+
+Summarize data using summarize columns command
+
+```{r}
+str(pokemon)
+summarizeColumns(pokemon)
+summary(pokemon)
+head(pokemon)
+```
+
+
+
+Remove columns that will not be used in machine learning
+
+1. Number
+2. Name 
+
+```{r}
+pokemon$Number=NULL
+pokemon$Name=NULL
+```
+
+Removing variable that have large missing values - Type_2, Egg_Group_2
+```{r}
+pokemon$Type_2=NULL
+pokemon$Egg_Group_2=NULL
+```
+
+Keep only records with hasGender =TRUE
+
+```{r}
+library(dplyr)
+table(pokemon$hasGender)
+pokemon=pokemon %>%
+  filter(hasGender=="True")
+```
+
+
