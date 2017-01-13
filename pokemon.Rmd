@@ -59,7 +59,85 @@ looking at the summary once again
 
 ```{r}
 summarizeColumns(pokemon)
+summary(pokemon)
+#remove has Gender
+pokemon$hasGender=NULL
+str(pokemon)
+#find levels of hasMegaEvolution
+table(pokemon$hasMegaEvolution)
+#mostly false
 ```
 
+We'll do a multiclassification with Type_1 as the response variable (18 levels) using MLR Package
 
-find the features that can be 
+First let's load the MLR package, and perform data splitting
+
+```{r}
+library(mlr)
+trainsample=sample(nrow(pokemon),0.6*nrow(pokemon),replace = FALSE)
+testsample=setdiff(1:nrow(pokemon),trainsample)
+```
+
+Now, we create the classification task for the pokemon dataset
+
+```{r}
+pokemontraintask=makeClassifTask(data = pokemon[trainsample,],target = "Type_1")
+pokemontraintask
+
+```
+
+Find learners that can perform multiclass classification. Then create a benchmarking list of at-least 4-5 such learners
+
+```{r}
+poklearnersall=listLearners(pokemontraintask,warn.missing.packages = FALSE)[c("class","package")]
+#we choose rpart, randomForest, Neural Network, ksvm, C50, gbm for creating the benchmark experiment
+pokemonbenchlearners=list(makeLearner("classif.rpart",predict.type = "prob",fix.factors.prediction = TRUE),
+                          makeLearner("classif.randomForest",predict.type = "prob",fix.factors.prediction = TRUE),
+                          makeLearner("classif.nnet",predict.type = "prob",fix.factors.prediction = TRUE),
+                          makeLearner("classif.boosting",predict.type = "prob",fix.factors.prediction = TRUE),
+                          makeLearner("classif.C50",predict.type = "prob",fix.factors.prediction = TRUE),
+                          makeLearner("classif.gbm",predict.type = "prob",fix.factors.prediction = TRUE))
+pokemonbenchlearners
+```
+
+Now, we create a benchmark strategy for the resampling. We'll choose cross validation with 2 iterations. We will keep stratify =FALSE since each sample may not have all the classes
+
+```{r}
+#Resampling Strategy
+pokemonresamplingbench=makeResampleDesc(method = "CV",iters=2)
+pokemonresamplingbench
+```
+
+Next, we define the performance measures to be estimated for this experiment. Let's take a look at all performance measures and then select appropriate ones for this benchmarking experiment
+
+```{r}
+listMeasures(pokemontraintask)
+pokemonbenchmeasures=list(kappa,multiclass.brier,acc,ber,logloss,timeboth)
+pokemonbenchmeasures
+```
+
+Finally, run the benchmark experiment
+
+```{r}
+pokemonbench=benchmark(learners = pokemonbenchlearners,tasks = pokemontraintask,resamplings = pokemonresamplingbench,measures = pokemonbenchmeasures)
+pokemonbench
+
+```
+
+The results are obnoxious. So, we'll take a stab at predicting some other variable- Let's see the structure again
+
+```{r}
+str(pokemon)
+```
+
+Lets see the distribution of Catch_Rate
+
+```{r}
+summary(pokemon$Catch_Rate)
+g1=ggplot(pokemon,aes(x=1,y=Catch_Rate))+geom_boxplot()
+g2=ggplot(pokemon,aes(Catch_Rate))+geom_histogram(binwidth = 5)
+library(gridExtra)
+grid.arrange(g1,g2)
+```
+
+Let's try and predict the catch rate
