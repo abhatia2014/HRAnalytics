@@ -68,7 +68,7 @@ table(pokemon$hasMegaEvolution)
 #mostly false
 ```
 
-We'll do a multiclassification with Type_1 as the response variable (18 levels) using MLR Package
+We'll do a multiclassification with Body_Style as the response variable (14 levels) using MLR Package
 
 First let's load the MLR package, and perform data splitting
 
@@ -81,7 +81,7 @@ testsample=setdiff(1:nrow(pokemon),trainsample)
 Now, we create the classification task for the pokemon dataset
 
 ```{r}
-pokemontraintask=makeClassifTask(data = pokemon[trainsample,],target = "Type_1")
+pokemontraintask=makeClassifTask(data = pokemon[trainsample,],target = "Body_Style")
 pokemontraintask
 
 ```
@@ -121,6 +121,19 @@ Finally, run the benchmark experiment
 ```{r}
 pokemonbench=benchmark(learners = pokemonbenchlearners,tasks = pokemontraintask,resamplings = pokemonresamplingbench,measures = pokemonbenchmeasures)
 pokemonbench
+#just perform resample using random Forest algorithm
+rf.learner=makeLearner("classif.C50",predict.type = "prob",fix.factors.prediction = TRUE)
+rf.resamp=makeResampleDesc("CV",iters=10)
+
+rf.resampleexpt=resample(learner = rf.learner,task = pokemontraintask,resampling = rf.resamp,measures = pokemonbenchmeasures,extract = function(x) x$learner.model$variable.importance)
+rf.resampleexpt$aggr
+rf.resampleexpt$extract
+rf.resampleexpt$pred
+
+#lets try out xgboost algorithm
+
+modds=createDummyFeatures(obj = pokemontraintask,method = "1-of-n")
+modds
 
 ```
 
