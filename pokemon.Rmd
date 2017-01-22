@@ -10,7 +10,7 @@ Load the required packages
 all_packages=list("dplyr","caret","ggplot2","mlr","DT")
 
 lapply(all_packages,require,character.only=TRUE)
-
+library(mlr)
 ```
 
 load the Pokemon dataset next
@@ -26,6 +26,9 @@ str(pokemon)
 summarizeColumns(pokemon)
 summary(pokemon)
 head(pokemon)
+table(pokemon$hasMegaEvolution)
+table(pokemon$isLegendary)
+
 ```
 
 
@@ -68,12 +71,37 @@ table(pokemon$hasMegaEvolution)
 #mostly false
 ```
 
-We'll do a multiclassification with Body_Style as the response variable (14 levels) using MLR Package
+We'll do a multiclassification with Egg_Group1 as the response variable (15 levels) using MLR Package
+
+
+We will remove variables that have high correlation- multicollinearity. We find predictor correlation
+
+```{r}
+#find numeric columns
+numcols=pokemon %>% 
+  select_if(is.numeric)
+varcorr=cor(numcols)
+library(corrplot)
+
+corrplot(varcorr,order = "hclust")
+
+highcorr=findCorrelation(varcorr,cutoff = 0.65)
+#It shows the first variable 'Total' has high correlation with other variables
+pokemon$Total=NULL
+```
+
+Let us now preprocess data using center, scale transformations (standardize)
+
+```{r}
+pokemon=normalizeFeatures(pokemon,target = "Egg_Group_1",method = "standardize")
+summary(pokemon)
+```
 
 First let's load the MLR package, and perform data splitting
 
 ```{r}
 library(mlr)
+
 trainsample=sample(nrow(pokemon),0.6*nrow(pokemon),replace = FALSE)
 testsample=setdiff(1:nrow(pokemon),trainsample)
 ```
@@ -81,10 +109,14 @@ testsample=setdiff(1:nrow(pokemon),trainsample)
 Now, we create the classification task for the pokemon dataset
 
 ```{r}
-pokemontraintask=makeClassifTask(data = pokemon[trainsample,],target = "Body_Style")
+#remove the empty factor levels from Egg_Group_1
+table(pokemon$Egg_Group_1)
+pokemon$Egg_Group_1=factor(pokemon$Egg_Group_1)
+pokemontraintask=makeClassifTask(data = pokemon[trainsample,],target = "Egg_Group_1")
 pokemontraintask
 
 ```
+
 
 Find learners that can perform multiclass classification. Then create a benchmarking list of at-least 4-5 such learners
 
@@ -121,36 +153,100 @@ Finally, run the benchmark experiment
 ```{r}
 pokemonbench=benchmark(learners = pokemonbenchlearners,tasks = pokemontraintask,resamplings = pokemonresamplingbench,measures = pokemonbenchmeasures)
 pokemonbench
-#just perform resample using random Forest algorithm
-rf.learner=makeLearner("classif.C50",predict.type = "prob",fix.factors.prediction = TRUE)
-rf.resamp=makeResampleDesc("CV",iters=10)
+#just perform resample using boosting  algorithm (which gave the best results)
+boost.learner=makeLearner("classif.boosting",predict.type = "prob",fix.factors.prediction = TRUE)
+boost.resamp=makeResampleDesc("CV",iters=10)
 
-rf.resampleexpt=resample(learner = rf.learner,task = pokemontraintask,resampling = rf.resamp,measures = pokemonbenchmeasures,extract = function(x) x$learner.model$variable.importance)
-rf.resampleexpt$aggr
-rf.resampleexpt$extract
-rf.resampleexpt$pred
-
-#lets try out xgboost algorithm
-
-modds=createDummyFeatures(obj = pokemontraintask,method = "1-of-n")
-modds
+boost.resampleexpt=resample(learner = boost.learner,task = pokemontraintask,resampling = boost.resamp,measures = pokemonbenchmeasures,extract = function(x) x$learner.model$variable.importance)
+boost.resampleexpt$aggr
+boost.resampleexpt$extract
+boost.resampleexpt$pred
+boost.resampleexpt$measures.test
 
 ```
 
-The results are obnoxious. So, we'll take a stab at predicting some other variable- Let's see the structure again
+Let's do hyper parameter tuning to achieve better performance. Let's use the kerlab SVM for the classification. First predict using the default hyperparameters. Also, at this time, let's change the target variabe to 'catch rate. First let's create a new task for the regression analysis
 
 ```{r}
-str(pokemon)
+names(pokemon)
+svm.task=makeRegrTask(data = pokemon,target = "Catch_Rate")
+svm.learner=makeLearner("regr.ksvm")
+listMeasures(svm.task)
+svm.measures=list(rsq,mse,rmse,timeboth)
+svm.resample.expt=resample(learner = svm.learner,task = svm.task,resampling = rf.resamp,measures = svm.measures)
+svm.resample.expt$aggr
 ```
 
-Lets see the distribution of Catch_Rate
+Now, let's get all the hyperparameters for KSVM
 
 ```{r}
-summary(pokemon$Catch_Rate)
-g1=ggplot(pokemon,aes(x=1,y=Catch_Rate))+geom_boxplot()
-g2=ggplot(pokemon,aes(Catch_Rate))+geom_histogram(binwidth = 5)
-library(gridExtra)
-grid.arrange(g1,g2)
+getParamSet("regr.ksvm")
 ```
 
-Let's try and predict the catch rate
+Here the regularization is represented by the C hyperparameter which defaults to 1. Let's tell MLR to randomly pick c value between 2^-5 to 2^5
+
+```{r}
+ps=makeParamSet(
+  makeNumericParam("C",lower=-5, upper=5,trafo = function(x) 2^x)
+)
+
+#create a random search in the space with 100 iterations
+
+ctrl=makeTuneControlRandom(maxit = 100)
+#run the hyperparameter tuning process
+
+hypertunesvm=tuneParams(learner = svm.learner,task = svm.task,resampling = rf.resamp,measures = svm.measures,par.set = ps,control = ctrl
+                        )
+hypertunesvm$y
+hypertunesvm
+```
+
+Lets investigate the results of our tuning
+
+```{r}
+data=generateHyperParsEffectData(hypertunesvm)
+data$data
+plotHyperParsEffect(data,x="C",y="mse.test.mean")
+```
+
+Let us see how long it took us to find that optimal value
+
+```{r}
+names(data$data)
+data$data
+plotHyperParsEffect(data,x="iteration",y="mse.test.mean")
+```
+
+Let's say that we want to tune two parameters simultaneously- sigma and cost
+
+```{r}
+ps=makeParamSet(
+  makeNumericParam("C",lower=-5, upper=5,trafo = function(x) 2^x),
+  makeNumericParam("sigma",lower = -5,upper=5,trafo = function(x) 2^x)
+)
+
+hypertunesvm=tuneParams(learner = svm.learner,task = svm.task,resampling = rf.resamp,measures = svm.measures,par.set = ps,control = ctrl)
+#again tune the parameter
+hypertunesvm
+
+```
+The result has improved with the best parameters as C=3.72 , sigma=0.0475 
+
+Let's visualize the hyperparameters
+
+```{r}
+data2=generateHyperParsEffectData(hypertunesvm,trafo = TRUE)
+data2$data
+plotHyperParsEffect(data2,x="C",y="sigma",z="rmse.test.rmse",plot.type = "heatmap",
+                    interpolate = "regr.earth")
+
+plt=plotHyperParsEffect(data2,x="C",y="sigma",z="rmse.test.rmse",plot.type = "heatmap",
+                    interpolate = "regr.earth",show.experiments = TRUE)
+min_plt=min(plt$data$rmse.test.rmse)
+max_plt=max(plt$data$rmse.test.rmse)
+mean_plt=mean(c(min_plt,max_plt))
+
+plt+scale_fill_gradient2(breaks=seq(min_plt,max_plt,length.out = 4),low = "green",mid = "yellow",high = "red",midpoint = mean_plt)
+                    
+```
+
