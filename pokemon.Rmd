@@ -155,7 +155,7 @@ pokemonbench=benchmark(learners = pokemonbenchlearners,tasks = pokemontraintask,
 pokemonbench
 #just perform resample using boosting  algorithm (which gave the best results)
 boost.learner=makeLearner("classif.boosting",predict.type = "prob",fix.factors.prediction = TRUE)
-boost.resamp=makeResampleDesc("CV",iters=10)
+boost.resamp=makeResampleDesc("CV",iters=5)
 
 boost.resampleexpt=resample(learner = boost.learner,task = pokemontraintask,resampling = boost.resamp,measures = pokemonbenchmeasures,extract = function(x) x$learner.model$variable.importance)
 boost.resampleexpt$aggr
@@ -176,7 +176,7 @@ Now, let's set the hyperparameters using the search parameters
 ```{r}
 boost.search=makeParamSet(
   makeIntegerParam("mfinal",lower = 75,upper = 150),
-  makeNumericParam("cp",lower=0.01,upper=0.05),
+  makeNumericParam("cp",lower=0.005,upper=0.05),
   makeIntegerParam("maxdepth",lower=10,upper=30)
 )
 
@@ -185,7 +185,7 @@ boost.search=makeParamSet(
 Now, find the parameter search algorithm
 
 ```{r}
-boost.algorithm=makeTuneControlRandom(maxit = 20)
+boost.algorithm=makeTuneControlRandom(maxit = 30)
 ```
 
 
@@ -197,45 +197,65 @@ Finally, perform the tuning
 #run the hyperparameter tuning process
 boost.hypertune=tuneParams(learner = boost.learner,task = pokemontraintask,resampling = boost.resamp,measures = pokemonbenchmeasures,par.set = boost.search,control = boost.algorithm)
 boost.hypertune
+boost.hypertune$opt.path
+names(boost.hypertune)
+boost.hypertune$y
+#perform the visualization for the best hyper parameters
+optimum.grid=as.data.frame(boost.hypertune$opt.path)
+optimum.grid
+g=ggplot(optimum.grid,aes(x = mfinal,y= cp,fill=acc.test.mean,label=round(acc.test.mean,3)))
+g+geom_tile()+geom_text(color="white")
 ```
 
-Let's store the results of analysis
+Overall accuracy of 69.12% which is actually lower than the mean accuracy obtained during resampling experiment using the default hyperparameters
+
+So, we stick to the default learner (with default hyperparameters) and perform the model training
 
 ```{r}
-save.image("pokemonresults.RData")
+boost.train=mlr::train(learner = boost.learner,task = pokemontraintask)
+boost.train
 ```
 
-
-Let's say that we want to tune two parameters simultaneously- sigma and cost
+Let's predict using the training model built
 
 ```{r}
-ps=makeParamSet(
-  makeNumericParam("C",lower=-5, upper=5,trafo = function(x) 2^x),
-  makeNumericParam("sigma",lower = -5,upper=5,trafo = function(x) 2^x)
-)
 
-hypertunesvm=tuneParams(learner = svm.learner,task = svm.task,resampling = rf.resamp,measures = svm.measures,par.set = ps,control = ctrl)
-#again tune the parameter
-hypertunesvm
+boost.predict=predict(boost.train,newdata = pokemon,subset = testsample)
+boost.predict
 
+confusionMatrix(boost.predict$data$truth,boost.predict$data$response)
 ```
-The result has improved with the best parameters as C=3.72 , sigma=0.0475 
 
-Let's visualize the hyperparameters
+Overall accuracy of 65.5%
+
+Let's see other measures of performance for this task
 
 ```{r}
-data2=generateHyperParsEffectData(hypertunesvm,trafo = TRUE)
-data2$data
-plotHyperParsEffect(data2,x="C",y="sigma",z="rmse.test.rmse",plot.type = "heatmap",
-                    interpolate = "regr.earth")
-
-plt=plotHyperParsEffect(data2,x="C",y="sigma",z="rmse.test.rmse",plot.type = "heatmap",
-                    interpolate = "regr.earth",show.experiments = TRUE)
-min_plt=min(plt$data$rmse.test.rmse)
-max_plt=max(plt$data$rmse.test.rmse)
-mean_plt=mean(c(min_plt,max_plt))
-
-plt+scale_fill_gradient2(breaks=seq(min_plt,max_plt,length.out = 4),low = "green",mid = "yellow",high = "red",midpoint = mean_plt)
-                    
+listMeasures(pokemontraintask)
+performance(pred = boost.predict,measures = list(acc,mmce,kappa),task = pokemontraintask,model = boost.train)
 ```
+accuracy of 65.5% and mean classification error of 34.49%
+
+Instead let's take the selected hyperparameters and train and predict using those to see if we can achieve higher accuracy
+
+```{r}
+#creating a learner with the optimal hyperparameters
+final.learner=setHyperPars(makeLearner("classif.boosting",par.vals = boost.hypertune$x))
+final.learner
+#we again train the machine using the final learner and predict on the test set once again
+final.train=mlr::train(learner = final.learner,task = pokemontraintask)
+final.train
+final.predict=predict(object = final.train,newdata = pokemon,subset = testsample)
+confusionMatrix(final.predict$data$truth,final.predict$data$response)
+```
+
+As expected, the accuracy has infact fallen by using the selected hyperparameters. Some other performance measures
+
+```{r}
+calculateConfusionMatrix(final.predict,relative = TRUE,sums = TRUE)
+performance(pred = final.predict,measures = list(acc,mmce,kappa),task = pokemontraintask,model = final.train)
+```
+
+
+
 
