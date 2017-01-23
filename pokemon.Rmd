@@ -165,57 +165,46 @@ boost.resampleexpt$measures.test
 
 ```
 
-Let's do hyper parameter tuning to achieve better performance. Let's use the kerlab SVM for the classification. First predict using the default hyperparameters. Also, at this time, let's change the target variabe to 'catch rate. First let's create a new task for the regression analysis
+Let's do hyper parameter tuning to achieve better performance. Let's use the classif.booting for the classification. Let's first get all the parameters for classif.boosting algorithm
 
 ```{r}
-names(pokemon)
-svm.task=makeRegrTask(data = pokemon,target = "Catch_Rate")
-svm.learner=makeLearner("regr.ksvm")
-listMeasures(svm.task)
-svm.measures=list(rsq,mse,rmse,timeboth)
-svm.resample.expt=resample(learner = svm.learner,task = svm.task,resampling = rf.resamp,measures = svm.measures)
-svm.resample.expt$aggr
+getParamSet("classif.boosting")
 ```
 
-Now, let's get all the hyperparameters for KSVM
+Now, let's set the hyperparameters using the search parameters
 
 ```{r}
-getParamSet("regr.ksvm")
-```
-
-Here the regularization is represented by the C hyperparameter which defaults to 1. Let's tell MLR to randomly pick c value between 2^-5 to 2^5
-
-```{r}
-ps=makeParamSet(
-  makeNumericParam("C",lower=-5, upper=5,trafo = function(x) 2^x)
+boost.search=makeParamSet(
+  makeIntegerParam("mfinal",lower = 75,upper = 150),
+  makeNumericParam("cp",lower=0.01,upper=0.05),
+  makeIntegerParam("maxdepth",lower=10,upper=30)
 )
 
-#create a random search in the space with 100 iterations
+```
 
-ctrl=makeTuneControlRandom(maxit = 100)
+Now, find the parameter search algorithm
+
+```{r}
+boost.algorithm=makeTuneControlRandom(maxit = 20)
+```
+
+
+Finally, perform the tuning 
+
+
+```{r}
+
 #run the hyperparameter tuning process
-
-hypertunesvm=tuneParams(learner = svm.learner,task = svm.task,resampling = rf.resamp,measures = svm.measures,par.set = ps,control = ctrl
-                        )
-hypertunesvm$y
-hypertunesvm
+boost.hypertune=tuneParams(learner = boost.learner,task = pokemontraintask,resampling = boost.resamp,measures = pokemonbenchmeasures,par.set = boost.search,control = boost.algorithm)
+boost.hypertune
 ```
 
-Lets investigate the results of our tuning
+Let's store the results of analysis
 
 ```{r}
-data=generateHyperParsEffectData(hypertunesvm)
-data$data
-plotHyperParsEffect(data,x="C",y="mse.test.mean")
+save.image("pokemonresults.RData")
 ```
 
-Let us see how long it took us to find that optimal value
-
-```{r}
-names(data$data)
-data$data
-plotHyperParsEffect(data,x="iteration",y="mse.test.mean")
-```
 
 Let's say that we want to tune two parameters simultaneously- sigma and cost
 
